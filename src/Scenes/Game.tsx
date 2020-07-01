@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import Matter, { Constraint, Vector } from "matter-js";
+import Matter, { Constraint, Vector, Body } from "matter-js";
 
 const Game: React.FC = () => {
   const _setUpGame = () => {
@@ -28,34 +28,38 @@ const Game: React.FC = () => {
       },
     });
 
-    var ballA = Bodies.circle(210, 100, 30, {
+    var ballA = Bodies.circle(300, 300, 20, {
       restitution: 0.5,
     });
-
+    var ballB = Bodies.circle(500, 500, 20, {
+      restitution: 0.5,
+    });
+    ballA.collisionFilter.group = 2;
+    ballB.collisionFilter.group = 2;
     World.add(engine.world, [
       // walls
-      Bodies.rectangle(300, 0, 600, 10, {
+      Bodies.rectangle(300, 0, 600, 20, {
         isStatic: true,
       }),
-      Bodies.rectangle(300, 600, 600, 10, {
+      Bodies.rectangle(300, 600, 600, 20, {
         isStatic: true,
       }),
-      Bodies.rectangle(0, 300, 10, 600, {
+      Bodies.rectangle(0, 300, 20, 600, {
         isStatic: true,
       }),
-      Bodies.rectangle(600, 300, 10, 600, {
+      Bodies.rectangle(600, 300, 20, 600, {
         isStatic: true,
       }),
     ]);
 
-    World.add(engine.world, [ballA]);
+    World.add(engine.world, [ballA, ballB]);
 
-    // add mouse control
+    // add mouse controls
     var mouse = Mouse.create(render.canvas),
       mouseConstraint = MouseConstraint.create(engine, {
         mouse: mouse,
         constraint: {
-          stiffness: 0.2,
+          stiffness: 0,
           render: {
             visible: false,
           },
@@ -66,18 +70,32 @@ const Game: React.FC = () => {
 
     Matter.Events.on(mouseConstraint, "mousedown", function (event) {
       const targetAngle = Matter.Vector.angle(ballA.position, mouse.position);
-      const bullet = Bodies.circle(ballA.position.x, ballA.position.y, 5);
-      Matter.Body.setMass(bullet, 10000);
-      const force = 100;
+      const distance = ballA.circleRadius ?? 25 + 10;
+
+      let spawnPosition = Vector.create(ballA.position.x, ballA.position.y);
+
+      spawnPosition.x += Math.cos(targetAngle) * distance;
+      spawnPosition.y += Math.sin(targetAngle) * distance;
+
+      const bullet = Bodies.circle(spawnPosition.x, spawnPosition.y, 10);
+      bullet.collisionFilter.group = 1;
+
+      Body.setMass(bullet, 1000);
+      const force = 10;
+
+      setTimeout(() => {
+        Matter.World.remove(engine.world, bullet);
+      }, 1500);
+
       Matter.World.add(engine.world, bullet);
-      Matter.Body.applyForce(bullet, bullet.position, {
+      Matter.Body.setVelocity(bullet, {
         x: Math.cos(targetAngle) * force,
         y: Math.sin(targetAngle) * force,
       });
     });
 
     document.addEventListener("keydown", (event) => {
-      const speed = 2;
+      const speed = 5;
       if (event.keyCode === 68) {
         const vector = Vector.create(1 * speed, 0);
         Matter.Body.setVelocity(ballA, vector);
