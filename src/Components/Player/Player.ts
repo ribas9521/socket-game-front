@@ -1,5 +1,5 @@
-import PlayerInterface from './types'
-import Matter from "matter-js";
+import PlayerInterface, { PlayerProps } from './types'
+import Matter, { Vector } from "matter-js";
 
 class Player implements PlayerInterface {
 
@@ -8,8 +8,10 @@ class Player implements PlayerInterface {
   public id: string
   public body: Matter.Body
   public speed: number
+  public engine: Matter.Engine
 
-  constructor(x: number, y: number, id: string) {
+  constructor(engine: Matter.Engine, { x, y, id }: PlayerProps) {
+    this.engine = engine
     this.x = x;
     this.y = y;
     this.id = id;
@@ -24,26 +26,30 @@ class Player implements PlayerInterface {
     );
     this.body.label = id
   }
-
-  getSpawnedBody(engine: Matter.Engine): Matter.Body {
-    return engine.world.bodies.filter((body) => body.label === this.id)[0]
+  setMass(mass: number) {
+    Matter.Body.setMass(this.getSpawnedBody(), mass);
   }
-
-  moveUp(engine: Matter.Engine): void {
+  getSpawnedBody(): Matter.Body {
+    return this.engine.world.bodies.filter((body) => body.label === this.id)[0]
+  }
+  setPosition(position: Vector) {
+    Matter.Body.setPosition(this.getSpawnedBody(), position)
+  }
+  moveUp(): void {
     const vector = Matter.Vector.create(0, -1 * this.speed);
-    Matter.Body.setVelocity(this.getSpawnedBody(engine), vector);
+    Matter.Body.setVelocity(this.getSpawnedBody(), vector);
   }
-  moveDown(engine: Matter.Engine): void {
+  moveDown(): void {
     const vector = Matter.Vector.create(0, 1 * this.speed);
-    Matter.Body.setVelocity(this.getSpawnedBody(engine), vector);
+    Matter.Body.setVelocity(this.getSpawnedBody(), vector);
   }
-  moveLeft(engine: Matter.Engine): void {
+  moveLeft(): void {
     const vector = Matter.Vector.create(-1 * this.speed, 0);
-    Matter.Body.setVelocity(this.getSpawnedBody(engine), vector);
+    Matter.Body.setVelocity(this.getSpawnedBody(), vector);
   }
-  moveRight(engine: Matter.Engine): void {
+  moveRight(): void {
     const vector = Matter.Vector.create(1 * this.speed, 0);
-    Matter.Body.setVelocity(this.getSpawnedBody(engine), vector);
+    Matter.Body.setVelocity(this.getSpawnedBody(), vector);
   }
 }
 

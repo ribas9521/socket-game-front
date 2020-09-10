@@ -1,46 +1,50 @@
 import React, { useEffect } from "react";
-import Matter, { Constraint, Vector, Body, Engine } from "matter-js";
+import Matter, { Constraint, Body, Engine } from "matter-js";
 import socketIOClient from "socket.io-client";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import PlayerInterface from "../Components/Player/types";
+import { PlayerProps } from "../Components/Player/types";
 import Player from "../Components/Player/Player";
-const ENDPOINT = "http://192.168.1.126:3333";
+import Bullet from "../Components/Bullet/Bullet";
+import { BulletProps } from "../Components/Bullet/types";
+const ENDPOINT = "http://192.168.100.19:3333";
 
 const Game: React.FC = () => {
   let playerId = "";
   let me: Matter.Body;
   let playerList: Player[] = [];
+  let socket: SocketIOClient.Socket;
+  let engine: Matter.Engine;
 
-  const spawnPlayers = (
-    engine: Matter.Engine,
-    _playerList: PlayerInterface[]
-  ) => {
+  const spawnPlayers = (_playerList: PlayerProps[]) => {
     for (const player of _playerList) {
-      const _player = new Player(player.x, player.y, player.id);
+      const _player = new Player(engine, {
+        x: player.x,
+        y: player.y,
+        id: player.id,
+      });
       Matter.World.add(engine.world, _player.body);
+      _player.setMass(1);
       playerList.push(_player);
     }
   };
 
-  const playerAlreadySpawned = (engine: Matter.Engine, player: Player) => {
-    return engine.world.bodies.filter((body) => body.label === player.id)
-      .length;
-  };
-
-  const spawnPlayer = (engine: Matter.Engine, player: Player) => {
-    if (!playerAlreadySpawned(engine, player)) {
-      console.log("new player added", player);
-      const _player = new Player(player.x, player.y, player.id);
+  const spawnPlayer = (player: PlayerProps) => {
+    if (!playerAlreadySpawned(player)) {
+      const _player = new Player(engine, player);
       Matter.World.add(engine.world, _player.body);
+      _player.setMass(1);
       playerList.push(_player);
     }
   };
 
-  const findPlayerById = (engine: Matter.Engine, playerId: string): Player => {
-    return playerList.filter((_player) => _player.id === playerId)[0];
+  const playerAlreadySpawned = (player: PlayerProps) => {
+    return engine.world.bodies.some((body) => body.label === player.id);
   };
 
-  const spawnWalls = (engine: Matter.Engine) => {
+  const findPlayerById = (playerId: string): Player | undefined => {
+    return playerList.find((_player) => _player.id === playerId);
+  };
+
+  const spawnWalls = () => {
     const rec1 = Matter.Bodies.rectangle(300, 0, 600, 20, {
       isStatic: true,
     });
@@ -58,24 +62,24 @@ const Game: React.FC = () => {
     });
     rec4.label = "wall";
 
-    Matter.World.add(engine.world, [
-      // walls
-      rec1,
-      rec2,
-      rec3,
-      rec4,
-    ]);
+    Matter.World.add(engine.world, [rec1, rec2, rec3, rec4]);
   };
 
-  const getMe = (engine: Matter.Engine) => {
-    me = playerList
-      .filter((_player) => _player.id === playerId)[0]
-      .getSpawnedBody(engine);
-    console.log(me.label);
-    console.log(playerList);
+  const getMe = () => {
+    const myPlayer = playerList.find((_player) => _player.id === playerId);
+    if (myPlayer) {
+      me = myPlayer.getSpawnedBody();
+    }
   };
 
-  const _setUpGame = () => {
+  const spawnBullet = (bullet: BulletProps) => {
+    const _bullet = new Bullet(engine, bullet);
+    console.log(bullet);
+    Matter.World.add(engine.world, _bullet.body);
+    return bullet;
+  };
+
+  const setUpGame = () => {
     const gameRef = document.getElementById("gameDiv") as HTMLDivElement;
 
     var Engine = Matter.Engine,
@@ -84,9 +88,7 @@ const Game: React.FC = () => {
       Mouse = Matter.Mouse,
       MouseConstraint = Matter.MouseConstraint;
 
-    var engine = Engine.create({
-      // positionIterations: 20
-    });
+    engine = Engine.create({});
     engine.world.gravity.y = 0;
     engine.world.gravity.x = 0;
 
@@ -99,13 +101,13 @@ const Game: React.FC = () => {
         wireframes: false,
       },
     });
-    spawnWalls(engine);
-    // add mouse controls
+    spawnWalls();
+
     const mouse = Mouse.create(render.canvas),
       mouseConstraint = MouseConstraint.create(engine, {
         mouse: mouse,
         constraint: {
-          stiffness: 1,
+          stiffness: 0,
           render: {
             visible: false,
           },
@@ -114,93 +116,67 @@ const Game: React.FC = () => {
 
     World.add(engine.world, mouseConstraint);
 
-    const socket = socketIOClient(ENDPOINT);
+    socket = socketIOClient(ENDPOINT);
+
     socket.on("connect", () => {
       playerId = socket.id;
     });
 
-    socket.on("setup", (playerList: PlayerInterface[]) => {
-      spawnPlayers(engine, playerList);
+    socket.on("player-list", (playerList: PlayerProps[]) => {
+      spawnPlayers(playerList);
+      getMe();
     });
 
-    socket.on("add-player", (player: Player) => {
-      spawnPlayer(engine, player);
-      getMe(engine);
-      Matter.Events.on(mouseConstraint, "mousedown", function (event) {
-        const targetAngle = Matter.Vector.angle(me.position, mouse.position);
-        const distance = (me.circleRadius ?? 50) + 10;
-
-        let spawnPosition = Vector.create(me.position.x, me.position.y);
-
-        spawnPosition.x += Math.cos(targetAngle) * distance;
-        spawnPosition.y += Math.sin(targetAngle) * distance;
-
-        const bullet = Matter.Bodies.circle(
-          spawnPosition.x,
-          spawnPosition.y,
-          10
-        );
-        bullet.label = "bullet";
-
-        Body.setMass(bullet, 1000);
-        const force = 10;
-
-        setTimeout(() => {
-          Matter.World.remove(engine.world, bullet);
-        }, 1500);
-
-        Matter.World.add(engine.world, bullet);
-        Matter.Body.setVelocity(bullet, {
-          x: Math.cos(targetAngle) * force,
-          y: Math.sin(targetAngle) * force,
-        });
-      });
-
-      document.addEventListener("keydown", (event) => {
-        if (event.keyCode === 68) {
-          socket.emit("move-player", { id: me.label, movement: "right" });
-        }
-        if (event.keyCode === 65) {
-          socket.emit("move-player", { id: me.label, movement: "left" });
-        }
-        if (event.keyCode === 87) {
-          socket.emit("move-player", { id: me.label, movement: "up" });
-        }
-        if (event.keyCode === 83) {
-          socket.emit("move-player", { id: me.label, movement: "down" });
-        }
-      });
-
-      socket.on(
-        "move-player",
-        (movementObj: { id: string; movement: string }) => {
-          const { id, movement } = movementObj;
-          const _player = findPlayerById(engine, id);
-          switch (movement) {
-            case "up":
-              _player.moveUp(engine);
-              break;
-            case "down":
-              _player.moveDown(engine);
-              break;
-            case "left":
-              _player.moveLeft(engine);
-              break;
-            case "right":
-              _player.moveRight(engine);
-              break;
-          }
-        }
-      );
+    socket.on("update-position", (player: PlayerProps) => {
+      const _player = findPlayerById(player.id);
+      if (_player) {
+        _player.setPosition(player);
+      }
     });
 
-    Matter.Events.on(engine, "collisionStart", (event) => {
+    socket.on("bullet", (bullet: BulletProps) => {
+      spawnBullet(bullet);
+    });
+
+    socket.on("add-player", (player: PlayerProps) => {
+      spawnPlayer(player);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      const _player = findPlayerById(me.label);
+      if (event.keyCode === 68) {
+        _player?.moveRight();
+      }
+      if (event.keyCode === 65) {
+        _player?.moveLeft();
+      }
+      if (event.keyCode === 87) {
+        _player?.moveUp();
+      }
+      if (event.keyCode === 83) {
+        _player?.moveDown();
+      }
+    });
+
+    Matter.Events.on(mouseConstraint, "mousedown", (event) => {
+      const bullet: BulletProps = {
+        id: `bullet//${me?.label}`,
+        x: me.position.x,
+        y: me.position.y,
+        angle: Matter.Vector.angle(me.position, mouse.position),
+        distance: 30,
+      };
+
+      socket.emit("bullet", bullet);
+    });
+
+    Matter.Events.on(engine, "collisionEnd", (event) => {
       const collisions = event.pairs[0];
       if (collisions) {
-        if (collisions.bodyA.label === "bullet") {
+        if (collisions.bodyA.label.includes("bullet")) {
           Matter.World.remove(engine.world, collisions.bodyA);
         }
-        if (collisions.bodyB.label === "bullet") {
+        if (collisions.bodyB.label.includes("bullet")) {
           Matter.World.remove(engine.world, collisions.bodyB);
         }
         if (
@@ -221,8 +197,20 @@ const Game: React.FC = () => {
 
     Render.run(render);
   };
+
+  const updatePosition = () => {
+    if (me) {
+      const myPlayer: PlayerProps = {
+        id: me.label,
+        x: me.position.x,
+        y: me.position.y,
+      };
+      socket.emit("update-position", myPlayer);
+    }
+  };
   useEffect(() => {
-    _setUpGame();
+    setUpGame();
+    setInterval(updatePosition, 20);
   });
 
   return (

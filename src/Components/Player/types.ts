@@ -1,11 +1,17 @@
-export default interface PlayerInterface {
-  id: string,
-  x: number,
-  y: number,
+export default interface PlayerInterface extends PlayerProps {
   body: Matter.Body
-  speed?: number
-  moveUp: (engine: Matter.Engine) => void
-  moveDown: (engine: Matter.Engine) => void
-  moveLeft: (engine: Matter.Engine) => void
-  moveRight: (engine: Matter.Engine) => void
+  speed: number
+  moveUp: () => void
+  moveDown: () => void
+  moveLeft: () => void
+  moveRight: () => void
+}
+
+export interface PlayerProps extends Position {
+  id: string;
+}
+
+export interface Position {
+  x: number;
+  y: number;
 }
